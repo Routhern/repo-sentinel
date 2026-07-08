@@ -18,8 +18,11 @@ uv run repo-sentinel track <경로> --key <별칭>  # repo_key로 짧은 별칭 
 uv run repo-sentinel pick <repo_key> <상대경로>  # 민감 파일을 vault로 격리 (단축: p)
 uv run repo-sentinel sync --direction push   # vault_root -> sync_target(NAS) 동기화
 
-uv run repo-sentinel tui                     # 자동완성이 되는 16색 TUI 대시보드
+uv run repo-sentinel tui                     # 번호 메뉴 기반 16색 TUI 대시보드
 ```
+
+Windows에서 심볼릭 링크 생성 권한(개발자 모드)을 켤 수 없다면
+`bin/repo-sentinel-admin.vbs`를 더블클릭해 관리자 권한으로 실행하세요.
 
 전체 명령어 참고는 [`docs/commands.md`](docs/commands.md), 내부 설계는
 [`docs/architecture.md`](docs/architecture.md)에 있습니다.

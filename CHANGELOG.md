@@ -30,6 +30,9 @@
 
 - `CHANGELOG.md`, `CONTRIBUTING.md`, `LICENSE`(MIT), `docs/` 문서 카테고리를
   새로 도입했습니다.
+- `bin/repo-sentinel-admin.vbs`를 추가했습니다. Windows에서 개발자 모드를 켤 수
+  없을 때 별도 설치 없이 UAC 승인만으로 `repo-sentinel`을 관리자 권한으로
+  실행합니다(인자를 생략하면 `tui`, 주면 그대로 CLI에 전달).
 
 ### Removed
 

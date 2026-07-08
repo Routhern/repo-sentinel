@@ -54,7 +54,9 @@ uv run repo-sentinel track D:\Gitea\myFirstRepo --key myrepo
 **Windows에서 `pick`/`relink` 시 주의**: 심볼릭 링크 생성은 Windows에서
 개발자 모드(설정 > 업데이트 및 보안 > 개발자용) 또는 관리자 권한이
 필요하다. 없으면 `SymlinkPermissionError`가 발생하며, 이 경우 `pick`은
-vault로 옮겼던 파일을 원래 자리로 롤백한다.
+vault로 옮겼던 파일을 원래 자리로 롤백한다. 개발자 모드를 켤 수 없다면
+`bin/repo-sentinel-admin.vbs`를 더블클릭해 관리자 권한으로 실행하면 된다
+(UAC 승인만 받으면 되고 별도 설치는 필요 없다).
 
 ## 동기화 · 설정
 

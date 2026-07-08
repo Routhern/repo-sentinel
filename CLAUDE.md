@@ -63,6 +63,13 @@ uv add --dev <package>           # 개발 의존성 추가
 루트로 이동한 뒤 `uv run repo-sentinel`을 위임 실행하는 얇은 래퍼일 뿐이며, uv 외의
 사전 설치를 요구하지 않는다.
 
+`bin/repo-sentinel-admin.vbs`는 같은 방식으로 저장소 루트를 찾아 `uv run
+repo-sentinel`을 실행하되, Windows Script Host의 `Shell.Application.ShellExecute`
+(`"runas"`)로 UAC 승인만 받아 관리자 권한 프로세스를 띄운다(별도 설치 불필요).
+더블클릭하면 인자 없이 `tui`를 실행하고, 인자를 주면(`wscript
+bin\repo-sentinel-admin.vbs pick <repo_key> <경로>`) 그대로 CLI에 전달한다.
+개발자 모드를 켤 수 없는 환경에서 심볼릭 링크 생성 권한을 얻는 용도다.
+
 **Windows에서 `pick`/`relink` 테스트 시 주의**: 심볼릭 링크 생성은 Windows에서
 개발자 모드(설정 > 업데이트 및 보안 > 개발자용) 또는 관리자 권한이 필요하다. 없으면
 `SymlinkPermissionError`가 발생하며, 이 경우 `pick`은 vault로 옮겼던 파일을
