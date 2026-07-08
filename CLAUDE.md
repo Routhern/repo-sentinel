@@ -7,7 +7,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 repo-sentinel는 PC 전역에 흩어진 git 저장소(GitHub, Gitee 등)를 중앙 목록화하고,
 변경 사항을 감지하며, dotenv·개인 파일(`내_일기.md`)·중간 산출물 같은 민감한 데이터를
 저장소 밖의 동기화 대상(시놀로지 NAS 등)을 통해 macOS/Windows 간 공유하기 위한
-파이썬 CLI 도구입니다. CLI 기능을 그대로 재사용하는 GUI가 이후 추가될 예정입니다.
+파이썬 CLI 도구입니다. GUI 계획은 철회되었고, 대신 `core/`의 로직을 그대로
+재사용하는 Textual 기반 TUI 대시보드(`repo-sentinel tui`)로 대체되었다.
 기획 배경 전문은 `CONTEXTS_AND_PLAN.md`에 있습니다.
 
 **핵심 원칙**: 이 저장소 자체는 순수 소스코드만으로 구성되어야 하며 데이터나 시크릿을
@@ -39,9 +40,12 @@ uv run repo-sentinel sync --direction push|pull         # vault_root <-> sync_ta
 uv run repo-sentinel set-vault-root <경로>       # vault_root 설정 (기본: ~/.repo-sentinel/vault)
 uv run repo-sentinel set-sync-target <경로>      # NAS 등 동기화 대상 로컬 폴더 설정
 
+uv run repo-sentinel tui                         # 구독 대시보드 TUI 실행
+
 uv run pytest                                    # 전체 테스트 실행
 uv run pytest tests/test_protect.py -q           # 단일 파일
 uv run pytest tests/test_protect.py::test_protect_file_moves_and_links  # 단일 테스트
+uv run pytest tests/test_tui_app.py -q           # TUI 헤드리스 스모크 테스트(Textual App.run_test)
 
 uv add <package>                 # 런타임 의존성 추가
 uv add --dev <package>           # 개발 의존성 추가
@@ -127,8 +131,37 @@ uv add --dev <package>           # 개발 의존성 추가
 - `purge` — vault 데이터를 즉시 삭제한다. 레포에 깨진 링크가 남을 수 있어 CLI에서
   반드시 확인(`typer.confirm`)을 받는다.
 
-### GUI
+### TUI (`tui/`, Textual)
 
-`gui/`는 아직 비어 있는 자리 표시자다. GUI를 만들 때는 새 로직을 만들지 말고
-`core/`의 함수(subscriptions, protect, audit, sync 등)를 그대로 호출(포크)하도록
-한다 — CLI와 GUI가 같은 로직을 공유해야 한다는 것이 기획 의도다.
+GUI 계획은 철회하고 Textual 기반 TUI로 대체했다. `tui/`도 `core/`의 함수를 그대로
+호출할 뿐 새 정책 로직을 만들지 않는다 — CLI와 TUI가 같은 로직을 공유해야 한다는
+원칙은 그대로 유지된다.
+
+- `tui/app.py` — `RepoSentinelApp`(Textual `App`). 구독 목록을 `DataTable`로,
+  명령 실행 결과를 `RichLog`로, 명령 입력을 `Input`으로 보여주는 단일 화면
+  대시보드다. `on_input_submitted`가 입력을 토큰화(`shlex.split`)해서
+  `subscribe`/`unsubscribe`/`protect`/`relink`/`audit`/`sync`/`refresh`/`quit`로
+  분기하며, 각 핸들러는 CLI와 마찬가지로 `core/`를 직접 호출한다. CLI의
+  `typer.confirm`(대화형 프롬프트)은 풀스크린 앱 안에서 쓸 수 없으므로, TUI의
+  `protect`는 `.gitignore` 미반영을 발견하면 확인 없이 자동으로 추가하고 로그로
+  알린다(사용자 확인이 필요하면 로그에서 바로 되돌릴 수 있는 수준의 변경이라
+  안전하다고 판단).
+- `tui/suggester.py` — 명령창 자동완성. 1번째 토큰은 명령어 접두 매칭, 2번째
+  토큰은(해당 명령이 repo_key를 받는 경우) 구독 중인 repo_key 접두 매칭, `protect`의
+  3번째 이후 토큰은 레포 내 상대경로 자동완성으로 이어진다. Textual의 `Input`은
+  suggestion을 "현재 입력값의 리터럴 접두어 확장"으로 취급해 나머지를 고스트
+  텍스트로 그리므로, 매칭은 반드시 **접두어 매칭**이어야 한다(부분 문자열 매칭을
+  쓰면 고스트 텍스트가 깨진다). 순수 로직(`compute_suggestion`)은 Textual 의존 없이
+  분리되어 있어 단위 테스트가 쉽다.
+- `tui/paths.py` — `protect` 3번째 토큰용 경로 자동완성. 셸 탭 완성처럼 마지막
+  `/` 기준으로 디렉터리를 열어 그 안의 항목을 접두 매칭한다. `Path(".").name`이
+  빈 문자열로 접혀버리는 pathlib 특성 때문에 `Path`가 아니라 `str.rpartition("/")`로
+  직접 구현한다.
+- `tui/styles.tcss` — 의도적으로 표준 ANSI 8색(그리고 `text-style: bold`로 표현하는
+  밝은 계열)만 사용한다. truecolor를 지원하지 않는 터미널(오래된 SSH 클라이언트 등)
+  에서도 항상 동일하게 보이도록 하기 위함이며, 새 위젯을 추가할 때도 이 팔레트
+  밖의 색을 쓰지 않는다.
+
+TUI를 헤드리스로 테스트할 때는 Textual의 `App.run_test()`(`tests/test_tui_app.py`
+참고)를 쓰고, `subscriptions.SUBSCRIPTIONS_FILE`과 `tui.app.load_config`를
+monkeypatch해서 실제 `~/.repo-sentinel/`을 건드리지 않게 격리한다.

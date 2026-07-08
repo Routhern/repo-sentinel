@@ -14,6 +14,8 @@ uv run repo-sentinel scan .                  # 저장소 탐색 (읽기 전용)
 uv run repo-sentinel subscribe <경로>         # 추적 대상으로 등록
 uv run repo-sentinel protect <repo_key> <상대경로>  # 민감 파일을 vault로 격리
 uv run repo-sentinel sync --direction push   # vault_root -> sync_target(NAS) 동기화
+
+uv run repo-sentinel tui                     # 자동완성이 되는 16색 TUI 대시보드
 ```
 
 ## 원칙

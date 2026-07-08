@@ -301,5 +301,13 @@ def set_sync_target(path: Path = typer.Argument(..., help="NAS 등 동기화 대
     console.print(f"[green]sync_target 설정 완료[/green]: {config.sync_target}")
 
 
+@app.command()
+def tui() -> None:
+    """구독 대시보드 TUI를 실행한다 (자동완성, 16색 팔레트)."""
+    from repo_sentinel.tui.app import RepoSentinelApp
+
+    RepoSentinelApp().run()
+
+
 if __name__ == "__main__":
     app()

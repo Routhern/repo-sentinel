@@ -1,0 +1,68 @@
+/* 16색(ANSI 8색 + bold를 통한 밝은 계열) 팔레트만 사용한다.
+   truecolor/256색 터미널이 아니어도(SSH, 옛 터미널 에뮬레이터 등) 항상
+   동일하게 보이도록 하기 위한 의도적인 제약이다. */
+
+Screen {
+    background: black;
+    color: white;
+}
+
+Header {
+    background: blue;
+    color: white;
+    text-style: bold;
+}
+
+Footer {
+    background: blue;
+    color: white;
+}
+
+DataTable {
+    background: black;
+    color: white;
+    border: solid cyan;
+}
+
+DataTable > .datatable--header {
+    background: black;
+    color: cyan;
+    text-style: bold;
+}
+
+DataTable > .datatable--cursor {
+    background: cyan;
+    color: black;
+}
+
+#log {
+    background: black;
+    color: white;
+    border: solid white;
+    height: 30%;
+}
+
+#command-input {
+    background: black;
+    color: white;
+    border: solid white;
+}
+
+#command-input:focus {
+    border: solid cyan;
+}
+
+.status-clean {
+    color: green;
+    text-style: bold;
+}
+
+.status-dirty {
+    color: yellow;
+    text-style: bold;
+}
+
+.status-issue {
+    color: red;
+    text-style: bold;
+}
