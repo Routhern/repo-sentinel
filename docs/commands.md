@@ -63,17 +63,38 @@ vault로 옮겼던 파일을 원래 자리로 롤백한다.
 | `sync --direction push\|pull` | `vault_root`와 `sync_target`(NAS 등) 사이를 미러링한다. |
 | `set-vault-root <경로>` | `vault_root` 경로를 설정한다 (기본값: `~/.repo-sentinel/vault`). |
 | `set-sync-target <경로>` | `sync_target` 경로를 설정한다. |
-| `tui` | 자동완성이 되는 16색 TUI 대시보드를 실행한다. |
+| `tui` | 번호 메뉴 기반의 16색 TUI 대시보드를 실행한다. |
 
 ## TUI 안에서
 
-TUI 명령창에서는 CLI와 동일한 명령·단축 별칭을 그대로 쓴다:
+TUI는 자유 입력형 커맨드 대신 번호 메뉴로 동작한다. 숫자 키(또는 방향키+Enter)로
+바로 아래 화면으로 이동하고, 어느 화면에서든 `Esc`로 이전 화면(메인 메뉴)으로
+돌아갈 수 있다:
 
 ```
-track(t) <경로> [--key 별칭] | untrack(ut) <repo_key> [restore|keep|purge] |
-pick(p) <repo_key> <경로...|--auto> | relink [repo_key] | audit [repo_key] |
-sync <push|pull> | refresh | quit
+Repo Sentinel 메인 메뉴
+
+1. 레포지토리 Track
+2. 레포지토리 Untrack
+3. 레포지토리 Relink
+4. 레포지토리 관리
+5. 파일 Pick
+6. 환경설정
+
+Q. 종료
 ```
+
+- **1~3 (Track/Untrack/Relink)**: 각각 CLI의 `track`/`untrack`/`relink`와 같은
+  동작을 폼으로 수행한다. `untrack`에서 `purge` 모드를 고르면 실행 전에 한 번
+  더 확인 창이 뜬다.
+- **4 (레포지토리 관리)**: 추적 목록을 표로 보여주고(경로·git 상태·이슈 개수),
+  상단에 `Sync Push`/`Sync Pull` 버튼이 있다. 레포 하나를 선택하면 상세
+  화면에서 `Audit 새로고침`/`Relink`/`Pick 파일 추가`/`Untrack`을 바로 실행할
+  수 있다.
+- **5 (파일 Pick)**: 레포를 고른 뒤 상대경로를 입력(자동완성 지원)하거나
+  `자동 탐지(--auto)` 버튼으로 `sensitive_patterns` 후보를 한 번에 격리한다.
+- **6 (환경설정)**: `vault_root`/`sync_target`/`sensitive_patterns`를 폼으로
+  편집하고 저장한다.
 
 자세한 아키텍처와 설계 배경은 [`docs/architecture.md`](architecture.md)를
 참고하라.

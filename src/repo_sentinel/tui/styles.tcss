@@ -35,20 +35,19 @@ DataTable > .datatable--cursor {
     color: black;
 }
 
-#log {
-    background: black;
-    color: white;
-    border: solid white;
-    height: 30%;
-}
-
-#command-input {
+RichLog {
     background: black;
     color: white;
     border: solid white;
 }
 
-#command-input:focus {
+Input {
+    background: black;
+    color: white;
+    border: solid white;
+}
+
+Input:focus {
     border: solid cyan;
 }
 
@@ -65,4 +64,72 @@ DataTable > .datatable--cursor {
 .status-issue {
     color: red;
     text-style: bold;
+}
+
+.screen-title {
+    text-style: bold;
+    color: cyan;
+    padding: 1 0;
+}
+
+.field-label {
+    color: white;
+    padding-top: 1;
+}
+
+Button {
+    background: black;
+    color: white;
+    border: solid white;
+}
+
+Button:focus {
+    border: solid cyan;
+}
+
+Button.-success {
+    color: green;
+    border: solid green;
+}
+
+Button.-error {
+    color: red;
+    border: solid red;
+}
+
+OptionList, ListView, RadioSet {
+    background: black;
+    color: white;
+    border: solid cyan;
+}
+
+OptionList > .option-list--option-highlighted,
+ListView > ListItem.--highlight {
+    background: cyan;
+    color: black;
+}
+
+#menu-hint {
+    color: white;
+    padding: 0 0 1 0;
+}
+
+#menu-rule {
+    color: white;
+}
+
+ConfirmModal {
+    align: center middle;
+}
+
+#confirm-box {
+    width: 60%;
+    background: black;
+    color: white;
+    border: solid red;
+    padding: 1 2;
+}
+
+#confirm-message {
+    padding-bottom: 1;
 }

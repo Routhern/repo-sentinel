@@ -14,11 +14,27 @@
   포함해 한 번만 자동으로 이관됩니다(데이터 손실 없음).
 - `CLAUDE.md`의 아키텍처 설명을 [`docs/architecture.md`](docs/architecture.md)로
   이전하고, CLI 사용법은 [`docs/commands.md`](docs/commands.md)로 분리했습니다.
+- TUI를 자유 입력형 커맨드 라인에서 번호 메뉴 + 화면(Screen) 전환 방식으로
+  전면 재설계했습니다. 메인 메뉴(`1` Track / `2` Untrack / `3` Relink / `4`
+  레포지토리 관리 / `5` Pick / `6` 환경설정 / `q` 종료)에서 각 화면으로
+  이동하며, "레포지토리 관리" 화면은 추적 목록 표 + `Sync Push`/`Pull`
+  버튼과, 레포를 선택하면 들어가는 상세 화면(감사 결과, Relink/Pick/Untrack
+  바로가기)으로 구성됩니다. "환경설정" 화면에서 `vault_root`/`sync_target`/
+  `sensitive_patterns`를 폼으로 편집할 수 있는 기능도 새로 생겼습니다.
+  `untrack`의 `purge` 모드는 실행 전에 확인 대화상자를 거칩니다.
+- CLI의 `track`/`untrack` 명령이 새로 만든 `core.tracking.track_repo`/
+  `untrack_repo` 헬퍼를 호출하도록 정리해, TUI와 완전히 같은 정책 로직을
+  공유하도록 했습니다.
 
 ### Added
 
 - `CHANGELOG.md`, `CONTRIBUTING.md`, `LICENSE`(MIT), `docs/` 문서 카테고리를
   새로 도입했습니다.
+
+### Removed
+
+- 자유 입력형 커맨드와 그 자동완성을 담당하던 `tui/suggester.py`를 번호
+  메뉴 UI로 대체하면서 제거했습니다.
 
 ## [0.1.0] - 2026-07-08
 

@@ -14,8 +14,6 @@ from repo_sentinel.core import scanner, sync as sync_core, tracking
 from repo_sentinel.core.config import load_config, save_config
 from repo_sentinel.core.gitignore import add_entry as gitignore_add_entry
 from repo_sentinel.core.gitignore import is_ignored
-from repo_sentinel.core.repo_key import compute_repo_key
-from repo_sentinel.core.vault import repo_vault_dir
 
 app = typer.Typer(help="PC 전역의 git 저장소를 관리하는 repo-sentinel CLI")
 console = Console()
@@ -49,38 +47,18 @@ def track(
 ) -> None:
     """PATH를 추적 목록에 등록한다. 이때부터 pick/relink/audit 대상이 된다."""
     repo_path = path.resolve()
-    if not (repo_path / ".git").exists():
-        console.print(f"[red]{repo_path}는 git 저장소가 아닙니다.[/red]")
+    result = tracking.track_repo(repo_path, key)
+    if result.error:
+        console.print(f"[red]{result.error}[/red]")
         raise typer.Exit(code=1)
 
-    result = compute_repo_key(repo_path)
-    if key is None and not result.is_portable:
-        console.print(
-            "[yellow]경고:[/yellow] 이 저장소에는 remote(origin)가 없어 폴더 이름을 "
-            "repo_key로 사용합니다. 다른 머신에서는 이 키로 vault를 재연결할 수 없습니다."
-        )
+    if result.warning:
+        style = "yellow" if key is None else "dim"
+        prefix = "경고: " if key is None else ""
+        console.print(f"[{style}]{prefix}{result.warning}[/{style}]")
 
-    repo_key = key or result.key
-    if key:
-        console.print(
-            f"[dim]사용자 지정 repo_key를 사용합니다: {repo_key} "
-            "(다른 머신에서도 동일한 --key로 track해야 relink가 가능합니다)[/dim]"
-        )
-
-    existing = tracking.load_tracked().get(repo_key)
-    if existing is not None and Path(existing.path) != repo_path:
-        console.print(
-            f"[red]repo_key '{repo_key}'는 이미 다른 경로({existing.path})에서 사용 중입니다. "
-            "다른 --key를 지정하세요.[/red]"
-        )
-        raise typer.Exit(code=1)
-
-    entry = tracking.add_tracked(
-        repo_key=repo_key,
-        path=str(repo_path),
-        remote_url=result.remote_url,
-        is_portable=result.is_portable,
-    )
+    entry = result.entry
+    assert entry is not None
     console.print(f"[green]추적 완료[/green]: {entry.repo_key} -> {entry.path}")
 
 
@@ -102,15 +80,9 @@ def untrack(
         console.print("[red]--mode는 restore, keep, purge 중 하나여야 합니다.[/red]")
         raise typer.Exit(code=1)
 
-    tracked = tracking.load_tracked()
-    entry = tracked.get(repo_key)
-    if entry is None:
+    if repo_key not in tracking.load_tracked():
         console.print(f"[red]{repo_key}는 추적 중이 아닙니다.[/red]")
         raise typer.Exit(code=1)
-
-    config = load_config()
-    vault_root = Path(config.vault_root)
-    repo_path = Path(entry.path)
 
     if mode == "purge":
         confirmed = typer.confirm(
@@ -119,25 +91,11 @@ def untrack(
         )
         if not confirmed:
             raise typer.Exit()
-        vault_dir = repo_vault_dir(vault_root, repo_key)
-        if vault_dir.exists():
-            import shutil
 
-            shutil.rmtree(vault_dir)
-    elif mode == "restore":
-        from repo_sentinel.core.vault import load_manifest
-
-        manifest = load_manifest(vault_root)
-        manifest_entry = manifest.repos.get(repo_key)
-        if manifest_entry:
-            for protected in list(manifest_entry.files):
-                protect_core.restore_file(
-                    repo_path, protected.relative_path, vault_root, repo_key, delete_vault_copy=True
-                )
-    # mode == "keep": vault 데이터는 그대로 두고 추적만 해제한다.
-
-    tracking.remove_tracked(repo_key)
-    console.print(f"[green]{repo_key} 추적 해제 완료[/green] (mode={mode})")
+    config = load_config()
+    vault_root = Path(config.vault_root)
+    result = tracking.untrack_repo(repo_key, mode, vault_root)
+    console.print(f"[green]{result.message}[/green]")
 
 
 app.command(name="ut")(untrack)

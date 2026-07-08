@@ -10,10 +10,15 @@
 from __future__ import annotations
 
 import json
+import shutil
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
+from pathlib import Path
 
+from repo_sentinel.core import protect
 from repo_sentinel.core.config import TRACKED_FILE, ensure_config_dir
+from repo_sentinel.core.repo_key import compute_repo_key
+from repo_sentinel.core.vault import load_manifest, repo_vault_dir
 
 
 @dataclass
@@ -82,3 +87,88 @@ def remove_tracked(repo_key: str) -> TrackedRepo | None:
     if removed is not None:
         save_tracked(tracked)
     return removed
+
+
+@dataclass
+class TrackResult:
+    entry: TrackedRepo | None
+    warning: str | None = None
+    error: str | None = None
+
+
+def track_repo(repo_path: Path, custom_key: str | None = None) -> TrackResult:
+    """CLI의 `track`과 TUI의 Track 화면이 공유하는 등록 로직.
+
+    repo_key 계산, 이식성 경고, 별칭 충돌 검사까지 한 번에 처리해 두 진입점이
+    같은 정책을 쓰도록 한다.
+    """
+    if not (repo_path / ".git").exists():
+        return TrackResult(None, error=f"{repo_path}는 git 저장소가 아닙니다.")
+
+    result = compute_repo_key(repo_path)
+    warning = None
+    if custom_key is None and not result.is_portable:
+        warning = (
+            "이 저장소에는 remote(origin)가 없어 폴더 이름을 repo_key로 사용합니다. "
+            "다른 머신에서는 이 키로 vault를 재연결할 수 없습니다."
+        )
+
+    repo_key = custom_key or result.key
+    if custom_key:
+        warning = (
+            f"사용자 지정 repo_key를 사용합니다: {repo_key} "
+            "(다른 머신에서도 동일한 --key로 track해야 relink가 가능합니다)"
+        )
+
+    existing = load_tracked().get(repo_key)
+    if existing is not None and Path(existing.path) != repo_path:
+        return TrackResult(
+            None,
+            error=f"repo_key '{repo_key}'는 이미 다른 경로({existing.path})에서 사용 중입니다. "
+            "다른 --key를 지정하세요.",
+        )
+
+    entry = add_tracked(
+        repo_key=repo_key,
+        path=str(repo_path),
+        remote_url=result.remote_url,
+        is_portable=result.is_portable,
+    )
+    return TrackResult(entry, warning=warning)
+
+
+@dataclass
+class UntrackResult:
+    ok: bool
+    message: str
+
+
+def untrack_repo(repo_key: str, mode: str, vault_root: Path) -> UntrackResult:
+    """CLI의 `untrack`과 TUI의 Untrack 화면이 공유하는 해제 로직.
+
+    `mode`에 따른 vault 처리(복원/보존/삭제) 분기를 한곳에 모은다. `purge`
+    확인 프롬프트는 호출자(CLI/TUI)의 표현 계층 책임으로 남겨둔다.
+    """
+    tracked = load_tracked()
+    entry = tracked.get(repo_key)
+    if entry is None:
+        return UntrackResult(False, f"{repo_key}는 추적 중이 아닙니다.")
+
+    repo_path = Path(entry.path)
+
+    if mode == "purge":
+        vault_dir = repo_vault_dir(vault_root, repo_key)
+        if vault_dir.exists():
+            shutil.rmtree(vault_dir)
+    elif mode == "restore":
+        manifest = load_manifest(vault_root)
+        manifest_entry = manifest.repos.get(repo_key)
+        if manifest_entry:
+            for protected in list(manifest_entry.files):
+                protect.restore_file(
+                    repo_path, protected.relative_path, vault_root, repo_key, delete_vault_copy=True
+                )
+    # mode == "keep": vault 데이터는 그대로 두고 추적만 해제한다.
+
+    remove_tracked(repo_key)
+    return UntrackResult(True, f"{repo_key} 추적 해제 완료 (mode={mode})")

@@ -84,14 +84,23 @@ uv add --dev <package>           # 개발 의존성 추가
   머신에서도 같은 키로 vault 매니페스트를 매칭할 수 있다. `vault_root/manifest.json`
   은 **vault_root 안에** 저장한다 — 설정 디렉터리에 두면 NAS로 동기화되지 않아
   새 머신에서 `relink`로 복구할 수 없다.
-- CLI(`cli.py`)와 TUI(`tui/app.py`)는 항상 `core/`의 같은 함수를 호출한다. 정책
-  로직(무엇을 격리할지, 어떻게 복원할지 등)은 반드시 `core/`에만 두고 CLI/TUI
-  양쪽에 중복 구현하지 않는다.
+- CLI(`cli.py`)와 TUI(`tui/screens.py`)는 항상 `core/`의 같은 함수를 호출한다.
+  정책 로직(무엇을 격리할지, 어떻게 복원할지 등)은 반드시 `core/`에만 두고
+  CLI/TUI 양쪽에 중복 구현하지 않는다. `track`/`untrack`처럼 두 곳에서 거의
+  동일하게 필요했던 로직은 `core/tracking.py`의 `track_repo`/`untrack_repo`
+  헬퍼로 뽑아 CLI·TUI가 그대로 호출한다.
 - `pick`(`core/protect.py`의 `protect_file`)은 심볼릭 링크 생성이 실패하면
   이동했던 파일을 원래 자리로 롤백한다 — 안 그러면 파일이 vault에 갇히고
   레포에는 아무것도 남지 않는 상태가 된다. `relink_repo`는 링크 자리에 실제
   파일이 있으면(드리프트) 덮어쓰지 않고 `DriftError`로만 알린다.
 
+TUI는 번호 메뉴 + 화면(Screen) 전환 방식이다(자유 입력형 커맨드 라인은
+폐기됨). `MainMenuScreen`에서 숫자 키(`1`~`6`)나 방향키+Enter로
+`TrackScreen`/`UntrackScreen`/`RelinkScreen`/`ManageScreen`/`PickScreen`/
+`SettingsScreen`으로 이동하고, `Esc`로 돌아가며, `q`로 종료한다. 자세한 화면별
+책임은 `docs/architecture.md`의 TUI 섹션을 보라.
+
 TUI를 헤드리스로 테스트할 때는 Textual의 `App.run_test()`(`tests/test_tui_app.py`
-참고)를 쓰고, `tracking.TRACKED_FILE`과 `tui.app.load_config`를 monkeypatch해서
-실제 `~/.repo-sentinel/`을 건드리지 않게 격리한다.
+참고)로 `pilot.press`/`pilot.click`을 이용해 실제 화면 전환과 위젯 상호작용을
+그대로 재현하고, `tracking.TRACKED_FILE`과 `tui.screens.load_config`를
+monkeypatch해서 실제 `~/.repo-sentinel/`을 건드리지 않게 격리한다.
