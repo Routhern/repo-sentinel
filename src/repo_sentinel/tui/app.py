@@ -1,4 +1,4 @@
-"""구독 대시보드 TUI. CLI와 동일하게 core/*의 로직만 호출하고, 새 정책 로직은
+"""추적 대시보드 TUI. CLI와 동일하게 core/*의 로직만 호출하고, 새 정책 로직은
 여기서 만들지 않는다 (CLAUDE.md의 "CLI/TUI가 core를 공유" 원칙).
 """
 
@@ -16,8 +16,8 @@ from textual.widgets import DataTable, Footer, Header, Input, RichLog
 
 from repo_sentinel.core import audit as audit_core
 from repo_sentinel.core import protect as protect_core
-from repo_sentinel.core import subscriptions as subs_core
 from repo_sentinel.core import sync as sync_core
+from repo_sentinel.core import tracking
 from repo_sentinel.core.config import load_config
 from repo_sentinel.core.gitignore import add_entry as gitignore_add_entry
 from repo_sentinel.core.gitignore import is_ignored
@@ -54,11 +54,11 @@ class RepoSentinelApp(App):
 
     def __init__(self) -> None:
         super().__init__()
-        self.subscriptions: dict[str, subs_core.Subscription] = {}
+        self.tracked: dict[str, tracking.TrackedRepo] = {}
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=False)
-        yield DataTable(id="subscriptions-table")
+        yield DataTable(id="tracked-table")
         yield RichLog(id="log", wrap=True)
         yield Input(placeholder=HELP_TEXT, id="command-input", suggester=self._make_suggester())
         yield Footer()
@@ -67,16 +67,16 @@ class RepoSentinelApp(App):
         return CommandSuggester(self._repo_keys, self._path_candidates)
 
     def _repo_keys(self) -> list[str]:
-        return list(self.subscriptions.keys())
+        return list(self.tracked.keys())
 
     def _path_candidates(self, repo_key: str, prefix: str) -> list[str]:
-        sub = self.subscriptions.get(repo_key)
-        if sub is None:
+        entry = self.tracked.get(repo_key)
+        if entry is None:
             return []
-        return relative_path_candidates(Path(sub.path), prefix)
+        return relative_path_candidates(Path(entry.path), prefix)
 
     def on_mount(self) -> None:
-        table = self.query_one("#subscriptions-table", DataTable)
+        table = self.query_one("#tracked-table", DataTable)
         table.add_columns("repo_key", "경로", "git", "이슈")
         self.refresh_table()
         self.log_info(f"명령을 입력하세요. {HELP_TEXT}")
@@ -85,18 +85,18 @@ class RepoSentinelApp(App):
         self.refresh_table()
 
     def refresh_table(self) -> None:
-        self.subscriptions = subs_core.load_subscriptions()
+        self.tracked = tracking.load_tracked()
         config = load_config()
         vault_root = Path(config.vault_root)
 
-        table = self.query_one("#subscriptions-table", DataTable)
+        table = self.query_one("#tracked-table", DataTable)
         table.clear()
-        for sub in self.subscriptions.values():
-            state = _git_status(sub.path)
+        for entry in self.tracked.values():
+            state = _git_status(entry.path)
             state_text = Text(state, style="bold green" if state == "clean" else "bold yellow")
-            issues = audit_core.audit_repo(Path(sub.path), sub.repo_key, vault_root)
+            issues = audit_core.audit_repo(Path(entry.path), entry.repo_key, vault_root)
             issue_text = Text(str(len(issues)), style="bold red" if issues else "white")
-            table.add_row(sub.repo_key, sub.path, state_text, issue_text)
+            table.add_row(entry.repo_key, entry.path, state_text, issue_text)
 
     def log_info(self, message: str) -> None:
         self.query_one("#log", RichLog).write(Text(message, style="white"))
@@ -168,15 +168,15 @@ class RepoSentinelApp(App):
                 "(다른 머신에서도 동일한 --key로 track해야 relink가 가능합니다)"
             )
 
-        existing = self.subscriptions.get(repo_key)
+        existing = self.tracked.get(repo_key)
         if existing is not None and Path(existing.path) != repo_path:
             self.log_error(f"repo_key '{repo_key}'는 이미 다른 경로({existing.path})에서 사용 중입니다.")
             return
 
-        sub = subs_core.add_subscription(
+        entry = tracking.add_tracked(
             repo_key=repo_key, path=str(repo_path), remote_url=result.remote_url, is_portable=result.is_portable
         )
-        self.log_success(f"구독 완료: {sub.repo_key} -> {sub.path}")
+        self.log_success(f"추적 완료: {entry.repo_key} -> {entry.path}")
         self.refresh_table()
 
     def _cmd_untrack(self, args: list[str]) -> None:
@@ -188,14 +188,14 @@ class RepoSentinelApp(App):
         if mode not in {"restore", "keep", "purge"}:
             self.log_error("mode는 restore, keep, purge 중 하나여야 합니다.")
             return
-        sub = self.subscriptions.get(repo_key)
-        if sub is None:
-            self.log_error(f"{repo_key} 구독을 찾을 수 없습니다.")
+        entry = self.tracked.get(repo_key)
+        if entry is None:
+            self.log_error(f"{repo_key}는 추적 중이 아닙니다.")
             return
 
         config = load_config()
         vault_root = Path(config.vault_root)
-        repo_path = Path(sub.path)
+        repo_path = Path(entry.path)
 
         if mode == "purge":
             from repo_sentinel.core.vault import repo_vault_dir
@@ -205,15 +205,15 @@ class RepoSentinelApp(App):
                 shutil.rmtree(vault_dir)
         elif mode == "restore":
             manifest = load_manifest(vault_root)
-            entry = manifest.repos.get(repo_key)
-            if entry:
-                for protected in list(entry.files):
+            manifest_entry = manifest.repos.get(repo_key)
+            if manifest_entry:
+                for protected in list(manifest_entry.files):
                     protect_core.restore_file(
                         repo_path, protected.relative_path, vault_root, repo_key, delete_vault_copy=True
                     )
 
-        subs_core.remove_subscription(repo_key)
-        self.log_success(f"{repo_key} 구독 해제 완료 (mode={mode})")
+        tracking.remove_tracked(repo_key)
+        self.log_success(f"{repo_key} 추적 해제 완료 (mode={mode})")
         self.refresh_table()
 
     def _cmd_pick(self, args: list[str]) -> None:
@@ -221,12 +221,12 @@ class RepoSentinelApp(App):
             self.log_error("사용법: pick <repo_key> <경로...> | pick <repo_key> --auto")
             return
         repo_key, rest = args[0], args[1:]
-        sub = self.subscriptions.get(repo_key)
-        if sub is None:
-            self.log_error(f"{repo_key} 구독을 찾을 수 없습니다.")
+        entry = self.tracked.get(repo_key)
+        if entry is None:
+            self.log_error(f"{repo_key}는 추적 중이 아닙니다.")
             return
 
-        repo_path = Path(sub.path)
+        repo_path = Path(entry.path)
         config = load_config()
         vault_root = Path(config.vault_root)
 
@@ -262,34 +262,34 @@ class RepoSentinelApp(App):
     def _cmd_relink(self, args: list[str]) -> None:
         config = load_config()
         vault_root = Path(config.vault_root)
-        targets = [self.subscriptions[args[0]]] if args else list(self.subscriptions.values())
-        if args and args[0] not in self.subscriptions:
-            self.log_error(f"{args[0]} 구독을 찾을 수 없습니다.")
+        targets = [self.tracked[args[0]]] if args else list(self.tracked.values())
+        if args and args[0] not in self.tracked:
+            self.log_error(f"{args[0]}는 추적 중이 아닙니다.")
             return
 
-        for sub in targets:
+        for entry in targets:
             try:
-                relinked = protect_core.relink_repo(Path(sub.path), sub.repo_key, vault_root)
+                relinked = protect_core.relink_repo(Path(entry.path), entry.repo_key, vault_root)
             except protect_core.DriftError as e:
-                self.log_error(f"{sub.repo_key}: {e}")
+                self.log_error(f"{entry.repo_key}: {e}")
                 continue
             if relinked:
-                self.log_success(f"{sub.repo_key}: {', '.join(relinked)} 재연결")
+                self.log_success(f"{entry.repo_key}: {', '.join(relinked)} 재연결")
             else:
-                self.log_info(f"{sub.repo_key}: 변경 없음")
+                self.log_info(f"{entry.repo_key}: 변경 없음")
         self.refresh_table()
 
     def _cmd_audit(self, args: list[str]) -> None:
         config = load_config()
         vault_root = Path(config.vault_root)
-        targets = [self.subscriptions[args[0]]] if args else list(self.subscriptions.values())
-        if args and args[0] not in self.subscriptions:
-            self.log_error(f"{args[0]} 구독을 찾을 수 없습니다.")
+        targets = [self.tracked[args[0]]] if args else list(self.tracked.values())
+        if args and args[0] not in self.tracked:
+            self.log_error(f"{args[0]}는 추적 중이 아닙니다.")
             return
 
         found_any = False
-        for sub in targets:
-            for issue in audit_core.audit_repo(Path(sub.path), sub.repo_key, vault_root):
+        for entry in targets:
+            for issue in audit_core.audit_repo(Path(entry.path), entry.repo_key, vault_root):
                 found_any = True
                 self.log_error(f"{issue.repo_key} [{issue.kind}] {issue.relative_path}: {issue.detail}")
         if not found_any:

@@ -13,7 +13,7 @@ from pathlib import Path
 
 CONFIG_DIR = Path.home() / ".repo-sentinel"
 CONFIG_FILE = CONFIG_DIR / "config.toml"
-SUBSCRIPTIONS_FILE = CONFIG_DIR / "subscriptions.json"
+TRACKED_FILE = CONFIG_DIR / "tracked.json"
 
 # vault_root: 격리된 실제 파일들이 물리적으로 보관되는 로컬 디렉터리 (기준 상태).
 #   예: ~/.repo-sentinel/vault 또는 D:\data-vault

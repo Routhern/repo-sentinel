@@ -1,6 +1,6 @@
 """명령창 입력에 대한 문맥 인지 자동완성.
 
-1번째 토큰은 명령어, 2번째 토큰은 (해당 명령이 repo_key를 받는 경우) 구독
+1번째 토큰은 명령어, 2번째 토큰은 (해당 명령이 repo_key를 받는 경우) 추적
 목록, 3번째 이후 토큰은 (pick의 경우) 그 레포 안의 상대경로를 완성한다.
 Textual의 Suggester에 대한 의존은 얇은 래퍼(CommandSuggester)로만 격리해서,
 핵심 로직(compute_suggestion)은 Textual 없이도 단위 테스트할 수 있게 한다.

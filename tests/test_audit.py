@@ -14,7 +14,7 @@ def _seed_manifest(vault_root: Path, repo_key: str, relative_path: str, *, gitig
     save_manifest(vault_root, manifest)
 
 
-def test_audit_no_subscription_entry_returns_empty(tmp_path: Path) -> None:
+def test_audit_no_manifest_entry_returns_empty(tmp_path: Path) -> None:
     assert audit.audit_repo(tmp_path / "repo", "unknown-repo", tmp_path / "vault") == []
 
 
