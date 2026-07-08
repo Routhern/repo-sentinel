@@ -27,6 +27,7 @@ uv run repo-sentinel --help      # CLI 실행
 
 uv run repo-sentinel scan .                    # git 저장소 탐색 (읽기 전용, 등록 안 함)
 uv run repo-sentinel track <경로>               # 탐색된 저장소를 추적 대상으로 등록 (단축: t)
+uv run repo-sentinel track <경로> --key <별칭>   # repo_key로 기본값 대신 짧은 별칭 사용 (-k)
 uv run repo-sentinel untrack <repo_key>         # 추적 해제 (--mode restore|keep|purge) (단축: ut)
 uv run repo-sentinel list                       # 구독 목록 출력
 uv run repo-sentinel status                     # 구독 중인 저장소들의 git dirty/clean 상태
@@ -93,7 +94,14 @@ uv add --dev <package>           # 개발 의존성 추가
    `host__owner__repo` 형태로 만든다(예: `github.com__Routhern__repo-sentinel`).
    로컬 경로가 아니라 remote URL 기반이라 다른 머신에서도 동일한 키로 vault
    매니페스트를 매칭할 수 있다. remote가 없는 로컬 전용 레포는 폴더명으로 대체하되
-   이식성이 없다는 경고를 사용자에게 보여준다.
+   이식성이 없다는 경고를 사용자에게 보여준다. host에 포트 번호가 포함되면
+   (`host:port`) 콜론이 그대로 남을 수 있는데, 이는 `core/vault.py`의
+   `vault_dir_name`이 디렉터리 이름으로 쓰기 전에 별도로 sanitize하므로
+   `repo_key` 자체는 원본 그대로 유지된다. 이 기본값은 host/owner/repo를 모두
+   이어붙여 상당히 길어질 수 있으므로, `track --key <별칭>`(`-k`)으로 사용자가
+   원하는 짧은 문자열을 직접 repo_key로 지정할 수 있다. 이 경우 이식성 책임은
+   사용자에게 넘어간다 — 다른 머신에서도 반드시 같은 `--key`로 track해야 vault가
+   같은 키로 매칭되어 `relink`가 동작한다.
 4. `vault` (`core/vault.py`) — `vault_root/<repo_key>.repo-sentinel-vault/`에 실제
    파일을 보관하고, `vault_root/manifest.json`에 "어떤 레포의 어떤 상대경로가
    보호되어 있는지"를 기록한다. **매니페스트는 vault_root 안에 저장**한다 — 이것도

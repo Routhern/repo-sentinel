@@ -53,6 +53,34 @@ async def test_untrack_removes_from_table(isolated_env: Path) -> None:
         assert table.row_count == 0
 
 
+async def test_track_with_custom_key(isolated_env: Path) -> None:
+    repo = isolated_env / "some-very-long-clone-folder-name"
+    (repo / ".git").mkdir(parents=True)
+
+    app = RepoSentinelApp()
+    async with app.run_test() as pilot:
+        app._cmd_track([str(repo), "--key", "short"])
+        await pilot.pause()
+
+        assert list(app.subscriptions.keys()) == ["short"]
+
+
+async def test_track_rejects_key_collision_with_different_path(isolated_env: Path) -> None:
+    repo_a = isolated_env / "repo-a"
+    repo_b = isolated_env / "repo-b"
+    (repo_a / ".git").mkdir(parents=True)
+    (repo_b / ".git").mkdir(parents=True)
+
+    app = RepoSentinelApp()
+    async with app.run_test() as pilot:
+        app._cmd_track([str(repo_a), "--key", "dup"])
+        await pilot.pause()
+        app._cmd_track([str(repo_b), "--key", "dup"])
+        await pilot.pause()
+
+        assert app.subscriptions["dup"].path == str(repo_a.resolve())
+
+
 async def test_suggester_is_wired_to_live_subscriptions(isolated_env: Path) -> None:
     repo = isolated_env / "apple-seed-factory"
     (repo / ".git").mkdir(parents=True)

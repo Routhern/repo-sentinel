@@ -27,7 +27,7 @@ from repo_sentinel.tui.paths import relative_path_candidates
 from repo_sentinel.tui.suggester import CommandSuggester
 
 HELP_TEXT = (
-    "track(t) <경로> | untrack(ut) <repo_key> [restore|keep|purge] | "
+    "track(t) <경로> [--key 별칭] | untrack(ut) <repo_key> [restore|keep|purge] | "
     "pick(p) <repo_key> <경로...|--auto> | relink [repo_key] | audit [repo_key] | "
     "sync <push|pull> | refresh | quit"
 )
@@ -142,17 +142,39 @@ class RepoSentinelApp(App):
 
     def _cmd_track(self, args: list[str]) -> None:
         if not args:
-            self.log_error("사용법: track <경로>")
+            self.log_error("사용법: track <경로> [--key <별칭>]")
             return
+        rest = args[1:]
+        custom_key: str | None = None
+        if rest:
+            if rest[0] in ("--key", "-k") and len(rest) > 1:
+                custom_key = rest[1]
+            else:
+                self.log_error("사용법: track <경로> [--key <별칭>]")
+                return
+
         repo_path = Path(args[0]).resolve()
         if not (repo_path / ".git").exists():
             self.log_error(f"{repo_path}는 git 저장소가 아닙니다.")
             return
         result = compute_repo_key(repo_path)
-        if not result.is_portable:
+        if custom_key is None and not result.is_portable:
             self.log_error("경고: remote가 없어 폴더 이름을 repo_key로 사용합니다 (다른 머신과 이식 불가).")
+
+        repo_key = custom_key or result.key
+        if custom_key:
+            self.log_info(
+                f"사용자 지정 repo_key를 사용합니다: {repo_key} "
+                "(다른 머신에서도 동일한 --key로 track해야 relink가 가능합니다)"
+            )
+
+        existing = self.subscriptions.get(repo_key)
+        if existing is not None and Path(existing.path) != repo_path:
+            self.log_error(f"repo_key '{repo_key}'는 이미 다른 경로({existing.path})에서 사용 중입니다.")
+            return
+
         sub = subs_core.add_subscription(
-            repo_key=result.key, path=str(repo_path), remote_url=result.remote_url, is_portable=result.is_portable
+            repo_key=repo_key, path=str(repo_path), remote_url=result.remote_url, is_portable=result.is_portable
         )
         self.log_success(f"구독 완료: {sub.repo_key} -> {sub.path}")
         self.refresh_table()

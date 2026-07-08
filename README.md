@@ -12,6 +12,7 @@ uv run repo-sentinel --help
 
 uv run repo-sentinel scan .                  # 저장소 탐색 (읽기 전용)
 uv run repo-sentinel track <경로>             # 추적 대상으로 등록 (단축: t)
+uv run repo-sentinel track <경로> --key <별칭>  # repo_key로 짧은 별칭 직접 지정 (-k)
 uv run repo-sentinel pick <repo_key> <상대경로>  # 민감 파일을 vault로 격리 (단축: p)
 uv run repo-sentinel sync --direction push   # vault_root -> sync_target(NAS) 동기화
 
