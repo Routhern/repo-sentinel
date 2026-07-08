@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# 민감/개인 파일 (기획 원칙: 이 저장소에는 데이터·시크릿을 두지 않는다)
+.env
+*.env
+내_일기.md
