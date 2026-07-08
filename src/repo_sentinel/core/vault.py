@@ -9,14 +9,22 @@ NAS를 통해 다른 머신과 동기화되는 대상이므로, 새 머신에서
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 MANIFEST_FILENAME = "manifest.json"
 
+# Windows에서 경로에 쓸 수 없는 문자(`< > : " / \ | ? *`). repo_key는 remote
+# host:port(예: `example.com:32768`)를 그대로 담을 수 있어 콜론이 남을 수
+# 있으므로, 디렉터리 이름으로 쓰기 전에 치환한다. manifest의 키 등 다른 곳에
+# 쓰이는 repo_key 원본 문자열 자체는 건드리지 않는다.
+_UNSAFE_PATH_CHARS_RE = re.compile(r'[<>:"/\\|?*]')
+
 
 def vault_dir_name(repo_key: str) -> str:
-    return f"{repo_key}.repo-sentinel-vault"
+    safe_key = _UNSAFE_PATH_CHARS_RE.sub("_", repo_key)
+    return f"{safe_key}.repo-sentinel-vault"
 
 
 def repo_vault_dir(vault_root: Path, repo_key: str) -> Path:

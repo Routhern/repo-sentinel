@@ -24,13 +24,13 @@ async def test_dashboard_starts_empty(isolated_env: Path) -> None:
         assert table.row_count == 0
 
 
-async def test_subscribe_populates_table(isolated_env: Path) -> None:
+async def test_track_populates_table(isolated_env: Path) -> None:
     repo = isolated_env / "apple-seed-factory"
     (repo / ".git").mkdir(parents=True)
 
     app = RepoSentinelApp()
     async with app.run_test() as pilot:
-        app._cmd_subscribe([str(repo)])
+        app._cmd_track([str(repo)])
         await pilot.pause()
 
         table = app.query_one("#subscriptions-table", DataTable)
@@ -38,15 +38,15 @@ async def test_subscribe_populates_table(isolated_env: Path) -> None:
         assert list(app.subscriptions.keys()) == ["apple-seed-factory"]
 
 
-async def test_unsubscribe_removes_from_table(isolated_env: Path) -> None:
+async def test_untrack_removes_from_table(isolated_env: Path) -> None:
     repo = isolated_env / "apple-seed-factory"
     (repo / ".git").mkdir(parents=True)
 
     app = RepoSentinelApp()
     async with app.run_test() as pilot:
-        app._cmd_subscribe([str(repo)])
+        app._cmd_track([str(repo)])
         await pilot.pause()
-        app._cmd_unsubscribe(["apple-seed-factory", "keep"])
+        app._cmd_untrack(["apple-seed-factory", "keep"])
         await pilot.pause()
 
         table = app.query_one("#subscriptions-table", DataTable)
@@ -59,7 +59,7 @@ async def test_suggester_is_wired_to_live_subscriptions(isolated_env: Path) -> N
 
     app = RepoSentinelApp()
     async with app.run_test() as pilot:
-        app._cmd_subscribe([str(repo)])
+        app._cmd_track([str(repo)])
         await pilot.pause()
 
         assert app._repo_keys() == ["apple-seed-factory"]

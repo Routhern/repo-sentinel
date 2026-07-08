@@ -27,8 +27,8 @@ from repo_sentinel.tui.paths import relative_path_candidates
 from repo_sentinel.tui.suggester import CommandSuggester
 
 HELP_TEXT = (
-    "subscribe <경로> | unsubscribe <repo_key> [restore|keep|purge] | "
-    "protect <repo_key> <경로...|--auto> | relink [repo_key] | audit [repo_key] | "
+    "track(t) <경로> | untrack(ut) <repo_key> [restore|keep|purge] | "
+    "pick(p) <repo_key> <경로...|--auto> | relink [repo_key] | audit [repo_key] | "
     "sync <push|pull> | refresh | quit"
 )
 
@@ -122,9 +122,12 @@ class RepoSentinelApp(App):
 
         command, args = tokens[0].lower(), tokens[1:]
         handler = {
-            "subscribe": self._cmd_subscribe,
-            "unsubscribe": self._cmd_unsubscribe,
-            "protect": self._cmd_protect,
+            "track": self._cmd_track,
+            "t": self._cmd_track,
+            "untrack": self._cmd_untrack,
+            "ut": self._cmd_untrack,
+            "pick": self._cmd_pick,
+            "p": self._cmd_pick,
             "relink": self._cmd_relink,
             "audit": self._cmd_audit,
             "sync": self._cmd_sync,
@@ -137,9 +140,9 @@ class RepoSentinelApp(App):
             return
         handler(args)
 
-    def _cmd_subscribe(self, args: list[str]) -> None:
+    def _cmd_track(self, args: list[str]) -> None:
         if not args:
-            self.log_error("사용법: subscribe <경로>")
+            self.log_error("사용법: track <경로>")
             return
         repo_path = Path(args[0]).resolve()
         if not (repo_path / ".git").exists():
@@ -154,9 +157,9 @@ class RepoSentinelApp(App):
         self.log_success(f"구독 완료: {sub.repo_key} -> {sub.path}")
         self.refresh_table()
 
-    def _cmd_unsubscribe(self, args: list[str]) -> None:
+    def _cmd_untrack(self, args: list[str]) -> None:
         if not args:
-            self.log_error("사용법: unsubscribe <repo_key> [restore|keep|purge]")
+            self.log_error("사용법: untrack <repo_key> [restore|keep|purge]")
             return
         repo_key = args[0]
         mode = args[1] if len(args) > 1 else "restore"
@@ -191,9 +194,9 @@ class RepoSentinelApp(App):
         self.log_success(f"{repo_key} 구독 해제 완료 (mode={mode})")
         self.refresh_table()
 
-    def _cmd_protect(self, args: list[str]) -> None:
+    def _cmd_pick(self, args: list[str]) -> None:
         if not args:
-            self.log_error("사용법: protect <repo_key> <경로...> | protect <repo_key> --auto")
+            self.log_error("사용법: pick <repo_key> <경로...> | pick <repo_key> --auto")
             return
         repo_key, rest = args[0], args[1:]
         sub = self.subscriptions.get(repo_key)

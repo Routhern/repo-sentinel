@@ -26,13 +26,13 @@ uv sync                          # 의존성 설치 (.venv 생성)
 uv run repo-sentinel --help      # CLI 실행
 
 uv run repo-sentinel scan .                    # git 저장소 탐색 (읽기 전용, 등록 안 함)
-uv run repo-sentinel subscribe <경로>           # 탐색된 저장소를 추적 대상으로 등록
-uv run repo-sentinel unsubscribe <repo_key>     # 추적 해제 (--mode restore|keep|purge)
+uv run repo-sentinel track <경로>               # 탐색된 저장소를 추적 대상으로 등록 (단축: t)
+uv run repo-sentinel untrack <repo_key>         # 추적 해제 (--mode restore|keep|purge) (단축: ut)
 uv run repo-sentinel list                       # 구독 목록 출력
 uv run repo-sentinel status                     # 구독 중인 저장소들의 git dirty/clean 상태
 
-uv run repo-sentinel protect <repo_key> <상대경로...>   # 파일을 vault로 격리 + 심볼릭 링크 생성
-uv run repo-sentinel protect <repo_key> --auto          # sensitive_patterns로 후보 자동 탐색 후 격리
+uv run repo-sentinel pick <repo_key> <상대경로...>      # 파일을 vault로 격리 + 심볼릭 링크 생성 (단축: p)
+uv run repo-sentinel pick <repo_key> --auto             # sensitive_patterns로 후보 자동 탐색 후 격리
 uv run repo-sentinel relink [repo_key]                  # 현재 머신 기준으로 심볼릭 링크 재생성
 uv run repo-sentinel audit [repo_key]                   # 깨진 링크/gitignore 미반영/드리프트 점검
 uv run repo-sentinel sync --direction push|pull         # vault_root <-> sync_target 미러링
@@ -56,9 +56,9 @@ uv add --dev <package>           # 개발 의존성 추가
 루트로 이동한 뒤 `uv run repo-sentinel`을 위임 실행하는 얇은 래퍼일 뿐이며, uv 외의
 사전 설치를 요구하지 않는다.
 
-**Windows에서 `protect`/`relink` 테스트 시 주의**: 심볼릭 링크 생성은 Windows에서
+**Windows에서 `pick`/`relink` 테스트 시 주의**: 심볼릭 링크 생성은 Windows에서
 개발자 모드(설정 > 업데이트 및 보안 > 개발자용) 또는 관리자 권한이 필요하다. 없으면
-`SymlinkPermissionError`가 발생하며, 이 경우 `protect`는 vault로 옮겼던 파일을
+`SymlinkPermissionError`가 발생하며, 이 경우 `pick`은 vault로 옮겼던 파일을
 원래 자리로 롤백한다. `tests/conftest.py`의 `symlinks_supported` 픽스처가 이 권한
 유무를 감지해 관련 테스트를 자동으로 skip한다.
 
@@ -68,7 +68,7 @@ uv add --dev <package>           # 개발 의존성 추가
 
 ### NAS와 repo-sentinel의 책임 분리 (설계의 핵심 전제)
 
-- **repo-sentinel**은 정책 엔진이다: 어떤 파일을 격리할지 결정하고(`protect`),
+- **repo-sentinel**은 정책 엔진이다: 어떤 파일을 격리할지 결정하고(`pick`),
   `.gitignore` 반영을 검사하고, 로컬 심볼릭 링크를 관리한다.
 - **NAS(시놀로지 등)**는 단순 저장소다: 여러 기기 간 파일 동기화·백업·버전 관리만
   담당한다. repo-sentinel은 NAS를 신뢰하지 않으며, 기준 상태는 항상 로컬
@@ -85,7 +85,7 @@ uv add --dev <package>           # 개발 의존성 추가
 1. `scan` (`core/scanner.py`) — PC 전역에서 `.git` 저장소를 찾는다. **읽기 전용**이며
    아무것도 저장하지 않는다. 저장소를 찾으면 그 안쪽(서브모듈 등)은 더 내려가지 않고,
    `.venv`/`node_modules`류는 애초에 재귀 대상에서 제외한다.
-2. `subscribe`/`unsubscribe` (`core/subscriptions.py`) — 사용자가 명시적으로 고른
+2. `track`/`untrack` (`core/subscriptions.py`) — 사용자가 명시적으로 고른
    레포만 추적 대상이 된다. 로컬 클론 경로(`path`)는 머신마다 다를 수 있으므로
    `~/.repo-sentinel/subscriptions.json`에 로컬로만 저장하고, 머신 간 이식 가능한
    식별자는 `repo_key`를 쓴다.
@@ -99,7 +99,7 @@ uv add --dev <package>           # 개발 의존성 추가
    보호되어 있는지"를 기록한다. **매니페스트는 vault_root 안에 저장**한다 — 이것도
    NAS로 동기화되어야 새 머신에서 `relink`만으로 로컬 상태를 재구성할 수 있기
    때문이다(설정 디렉터리에 두면 동기화되지 않아 못 쓴다).
-5. `gitignore` (`core/gitignore.py`) — `protect`가 만드는 심볼릭 링크는 vault의
+5. `gitignore` (`core/gitignore.py`) — `pick`이 만드는 심볼릭 링크는 vault의
    로컬 절대경로를 담고 있으므로, 레포의 `.gitignore`가 그 경로를 무시하지 않으면
    링크 파일 자체가 커밋되어 다른 머신에서 깨진 링크로 남는다. `is_ignored`로 검사만
    하고, 실제 `.gitignore` 수정(`add_entry`)은 CLI가 사용자 확인을 받은 뒤에만
@@ -110,7 +110,7 @@ uv add --dev <package>           # 개발 의존성 추가
      원래 자리로 롤백**한다 — 안 그러면 파일이 vault에 갇히고 레포에는 아무것도
      남지 않는 상태가 된다.
    - `restore_file`: vault의 실제 파일을 레포 쪽으로 되돌리고 링크를 제거한다.
-     `delete_vault_copy` 여부로 vault 사본을 남길지 결정한다(unsubscribe의
+     `delete_vault_copy` 여부로 vault 사본을 남길지 결정한다(untrack의
      restore/keep 모드가 이 차이를 사용한다).
    - `relink_repo`: 매니페스트 기준으로 현재 머신의 깨진/누락된 링크를 재생성한다.
      링크 자리에 진짜 파일이 있으면(드리프트) 덮어쓰지 않고 `DriftError`로만
@@ -122,9 +122,9 @@ uv add --dev <package>           # 개발 의존성 추가
    다른 쪽으로 파일을 복사한다(`push`/`pull`). 표시용 상대경로는 OS와 무관하게
    항상 `/` 구분자(`Path.as_posix()`)로 반환한다.
 
-### unsubscribe의 세 가지 모드
+### untrack의 세 가지 모드
 
-`protect`된 파일이 있는 레포를 무작정 추적 해제하면 레포에 깨진 심볼릭 링크만
+`pick`된 파일이 있는 레포를 무작정 추적 해제하면 레포에 깨진 심볼릭 링크만
 남는다. 그래서 `--mode`로 명시적으로 선택하게 한다:
 - `restore`(기본값, 권장) — vault의 실제 파일을 레포로 복원하고 vault 사본은 삭제.
 - `keep` — 구독만 해제, vault 데이터와 레포의 링크는 그대로 둔다(고아 상태로 보존).
@@ -140,20 +140,20 @@ GUI 계획은 철회하고 Textual 기반 TUI로 대체했다. `tui/`도 `core/`
 - `tui/app.py` — `RepoSentinelApp`(Textual `App`). 구독 목록을 `DataTable`로,
   명령 실행 결과를 `RichLog`로, 명령 입력을 `Input`으로 보여주는 단일 화면
   대시보드다. `on_input_submitted`가 입력을 토큰화(`shlex.split`)해서
-  `subscribe`/`unsubscribe`/`protect`/`relink`/`audit`/`sync`/`refresh`/`quit`로
+  `track`/`untrack`/`pick`/`relink`/`audit`/`sync`/`refresh`/`quit`로
   분기하며, 각 핸들러는 CLI와 마찬가지로 `core/`를 직접 호출한다. CLI의
   `typer.confirm`(대화형 프롬프트)은 풀스크린 앱 안에서 쓸 수 없으므로, TUI의
-  `protect`는 `.gitignore` 미반영을 발견하면 확인 없이 자동으로 추가하고 로그로
+  `pick`은 `.gitignore` 미반영을 발견하면 확인 없이 자동으로 추가하고 로그로
   알린다(사용자 확인이 필요하면 로그에서 바로 되돌릴 수 있는 수준의 변경이라
   안전하다고 판단).
 - `tui/suggester.py` — 명령창 자동완성. 1번째 토큰은 명령어 접두 매칭, 2번째
-  토큰은(해당 명령이 repo_key를 받는 경우) 구독 중인 repo_key 접두 매칭, `protect`의
+  토큰은(해당 명령이 repo_key를 받는 경우) 구독 중인 repo_key 접두 매칭, `pick`의
   3번째 이후 토큰은 레포 내 상대경로 자동완성으로 이어진다. Textual의 `Input`은
   suggestion을 "현재 입력값의 리터럴 접두어 확장"으로 취급해 나머지를 고스트
   텍스트로 그리므로, 매칭은 반드시 **접두어 매칭**이어야 한다(부분 문자열 매칭을
   쓰면 고스트 텍스트가 깨진다). 순수 로직(`compute_suggestion`)은 Textual 의존 없이
   분리되어 있어 단위 테스트가 쉽다.
-- `tui/paths.py` — `protect` 3번째 토큰용 경로 자동완성. 셸 탭 완성처럼 마지막
+- `tui/paths.py` — `pick` 3번째 토큰용 경로 자동완성. 셸 탭 완성처럼 마지막
   `/` 기준으로 디렉터리를 열어 그 안의 항목을 접두 매칭한다. `Path(".").name`이
   빈 문자열로 접혀버리는 pathlib 특성 때문에 `Path`가 아니라 `str.rpartition("/")`로
   직접 구현한다.
