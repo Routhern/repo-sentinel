@@ -1,10 +1,12 @@
 [project]
 name = "repo-sentinel"
 version = "0.1.0"
-description = "Add your description here"
+description = "PC 전역의 git 저장소를 중앙 목록화하고 민감 파일을 vault로 격리·동기화하는 CLI/TUI 도구"
 readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [
-    { name = "Routhernion", email = "ljh93420@gmail.com" }
+    { name = "Routhern", email = "ljh93420@gmail.com" }
 ]
 requires-python = ">=3.12"
 dependencies = [
