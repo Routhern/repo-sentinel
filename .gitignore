@@ -7,3 +7,5 @@ __pycache__/
 .env
 *.env
 내_일기.md
+
+.claude/

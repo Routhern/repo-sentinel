@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 
 from repo_sentinel.core import protect
-from repo_sentinel.core.vault import load_manifest, repo_vault_dir
+from repo_sentinel.core.vault import Manifest, ProtectedFile, load_manifest, repo_vault_dir, save_manifest
 
 
 def _make_repo_with_file(tmp_path: Path) -> tuple[Path, Path]:
@@ -100,6 +100,45 @@ def test_relink_recreates_broken_link(tmp_path: Path, symlinks_supported: bool) 
 
     assert relinked == ["src/input/data.csv"]
     assert target_file.is_symlink()
+
+
+def test_restore_file_rejects_path_traversal(tmp_path: Path) -> None:
+    """조작된 manifest의 relative_path가 repo_path 밖의 파일을 지우지 못해야 한다."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    vault_root = tmp_path / "vault"
+    outside_file = tmp_path / "outside.txt"
+    outside_file.write_text("victim data", encoding="utf-8")
+
+    with pytest.raises(protect.UnsafeRelativePathError):
+        protect.restore_file(repo, "../outside.txt", vault_root, "repo-a", delete_vault_copy=True)
+
+    assert outside_file.exists()
+    assert outside_file.read_text(encoding="utf-8") == "victim data"
+
+
+def test_relink_repo_skips_unsafe_relative_path(tmp_path: Path, symlinks_supported: bool) -> None:
+    """NAS로 동기화된 manifest에 `..`가 섞인 relative_path가 있어도 repo 밖에 링크를 만들지 않는다."""
+    if not symlinks_supported:
+        pytest.skip("이 환경에서는 심볼릭 링크를 만들 권한이 없습니다 (Windows 개발자 모드 필요)")
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    vault_root = tmp_path / "vault"
+    vault_dir = repo_vault_dir(vault_root, "repo-a")
+    vault_dir.mkdir(parents=True)
+    (vault_dir / "payload.txt").write_text("attacker payload", encoding="utf-8")
+
+    manifest = Manifest()
+    manifest.repo("repo-a").files.append(
+        ProtectedFile(relative_path="../outside-link.txt", protected_at="")
+    )
+    save_manifest(vault_root, manifest)
+
+    with pytest.raises(protect.DriftError):
+        protect.relink_repo(repo, "repo-a", vault_root)
+
+    assert not (tmp_path / "outside-link.txt").exists()
 
 
 def test_relink_reports_drift_without_overwriting(tmp_path: Path, symlinks_supported: bool) -> None:

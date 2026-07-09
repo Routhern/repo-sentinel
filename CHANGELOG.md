@@ -6,6 +6,16 @@
 
 ## [Unreleased]
 
+### Security
+
+- 조작된 `manifest.json`(NAS로 동기화되는 `vault_root` 안에 있음)이 `..`나
+  절대 경로가 섞인 `relative_path`를 담고 있을 경우, `untrack --mode restore`가
+  레포 밖의 임의 파일을 삭제하거나 `relink`가 레포 밖 임의 위치에 심볼릭
+  링크를 생성할 수 있었던 경로 검증 누락을 수정했습니다. 이제
+  `core/protect.py`의 `restore_file`/`relink_repo`는 `relative_path`가
+  `repo_path`/`vault_root`를 벗어나면 각각 `UnsafeRelativePathError`를 던지거나
+  (relink의 경우) 해당 항목만 건너뛰고 `DriftError`로 알립니다.
+
 ### Changed
 
 - 레거시 `구독`/`subscribe` 명칭을 전면 정리했습니다: `core/subscriptions.py` →

@@ -28,6 +28,27 @@ class DriftError(RuntimeError):
     """심볼릭 링크가 있어야 할 자리에 실제 파일이 존재하는 경우."""
 
 
+class UnsafeRelativePathError(RuntimeError):
+    """manifest에 기록된 relative_path가 허용된 디렉터리를 벗어나려는 경우."""
+
+
+def _resolve_within(base: Path, relative_path: str) -> Path:
+    """base/relative_path를 base 밖으로 벗어나지 않는지 검증한 뒤 반환한다.
+
+    manifest.json은 vault_root와 함께 sync_target(NAS)을 통해 다른 머신과
+    동기화되므로, `..`나 절대 경로가 섞인 relative_path가 들어와도 repo_path나
+    vault_root 밖의 임의 파일을 건드리지 않도록 여기서 막는다. 마지막 구성요소
+    자체는 resolve하지 않는데, 그 자리가 심볼릭 링크인지 판별하는 것이 호출부의
+    책임이라 여기서 링크를 따라가버리면 그 판별이 무의미해지기 때문이다.
+    """
+    base_resolved = base.resolve()
+    joined = base_resolved / relative_path
+    candidate = joined.parent.resolve() / joined.name
+    if not candidate.is_relative_to(base_resolved):
+        raise UnsafeRelativePathError(f"{relative_path!r}는 {base}를 벗어나는 경로입니다")
+    return candidate
+
+
 def create_symlink(link_path: Path, target_path: Path) -> None:
     try:
         link_path.symlink_to(target_path)
@@ -93,14 +114,14 @@ def restore_file(
     repo_path: Path, relative_path: str, vault_root: Path, repo_key: str, *, delete_vault_copy: bool
 ) -> None:
     """vault의 실제 파일을 레포 쪽으로 되돌리고 심볼릭 링크를 제거한다."""
-    link_path = repo_path / relative_path
-    vault_file = repo_vault_dir(vault_root, repo_key) / relative_path
-
-    if link_path.is_symlink() or link_path.exists():
-        link_path.unlink()
+    link_path = _resolve_within(repo_path, relative_path)
+    vault_file = _resolve_within(repo_vault_dir(vault_root, repo_key), relative_path)
 
     if not vault_file.exists():
         raise FileNotFoundError(f"vault에 {vault_file}가 없습니다")
+
+    if link_path.is_symlink() or link_path.exists():
+        link_path.unlink()
 
     link_path.parent.mkdir(parents=True, exist_ok=True)
     if delete_vault_copy:
@@ -130,9 +151,14 @@ def relink_repo(repo_path: Path, repo_key: str, vault_root: Path) -> list[str]:
 
     relinked: list[str] = []
     drifted: list[str] = []
+    unsafe: list[str] = []
     for protected in entry.files:
-        link_path = repo_path / protected.relative_path
-        vault_file = repo_vault_dir(vault_root, repo_key) / protected.relative_path
+        try:
+            link_path = _resolve_within(repo_path, protected.relative_path)
+            vault_file = _resolve_within(repo_vault_dir(vault_root, repo_key), protected.relative_path)
+        except UnsafeRelativePathError:
+            unsafe.append(protected.relative_path)
+            continue
 
         if link_path.is_symlink():
             if link_path.exists():
@@ -146,9 +172,16 @@ def relink_repo(repo_path: Path, repo_key: str, vault_root: Path) -> list[str]:
         create_symlink(link_path, vault_file)
         relinked.append(protected.relative_path)
 
-    if drifted:
-        raise DriftError(
-            "다음 경로는 심볼릭 링크가 아닌 실제 파일이 있어 건드리지 않았습니다: "
-            + ", ".join(drifted)
-        )
+    if drifted or unsafe:
+        messages = []
+        if drifted:
+            messages.append(
+                "다음 경로는 심볼릭 링크가 아닌 실제 파일이 있어 건드리지 않았습니다: "
+                + ", ".join(drifted)
+            )
+        if unsafe:
+            messages.append(
+                "다음 경로는 repo/vault 밖을 가리켜 건너뛰었습니다: " + ", ".join(unsafe)
+            )
+        raise DriftError("; ".join(messages))
     return relinked
