@@ -31,6 +31,28 @@ uv run repo-sentinel track D:\Gitea\myFirstRepo --key myrepo
 `--key`로 track**해야 vault가 같은 키로 매칭되어 `relink`가 동작한다. 이미
 다른 경로가 같은 키를 쓰고 있으면 등록이 거부된다.
 
+### `track`이 만드는 .gitignore 리전과 pick 후보 확인
+
+`track`은 등록 직후 레포의 `.gitignore`에 다음과 같은 리전이 없으면 전역
+`sensitive_patterns`(기본값: `.env`, `*.env`, `내_일기.md`)로 새로 만든다:
+
+```gitignore
+# >>> repo-sentinel: pick 후보 패턴 >>>
+# 이 구간의 패턴에 매칭되는 파일은 pick 후보로 제안됩니다.
+# 패턴을 추가/삭제하려면 이 구간을 직접 편집하세요 (자동으로 갱신되지 않습니다).
+.env
+*.env
+내_일기.md
+# <<< repo-sentinel: pick 후보 패턴 <<<
+```
+
+이미 리전이 있으면 손대지 않는다 — **패턴 갱신은 사용자가 이 구간을 직접
+편집하는 수동 과정**이며, `track`을 다시 실행해도 전역 설정으로 덮어쓰지
+않는다. `track`은 매번(리전을 새로 만들었든 이미 있었든) 이 리전의 패턴에
+매칭되는, 아직 pick되지 않은 파일을 찾아 하나씩 지금 pick할지 확인한다.
+레포에 리전이 있으면 `pick --auto`도 전역 설정 대신 이 리전의 패턴을
+우선 사용한다.
+
 ### `untrack`의 세 가지 모드
 
 `pick`된 파일이 있는 레포를 무작정 추적 해제하면 레포에 깨진 심볼릭 링크만
@@ -88,13 +110,17 @@ Q. 종료
 
 - **1~3 (Track/Untrack/Relink)**: 각각 CLI의 `track`/`untrack`/`relink`와 같은
   동작을 폼으로 수행한다. `untrack`에서 `purge` 모드를 고르면 실행 전에 한 번
-  더 확인 창이 뜬다.
+  더 확인 창이 뜬다. `Track`은 CLI와 마찬가지로 등록 직후 `.gitignore`
+  리전을 확인/생성하고, 그 리전의 패턴에 매칭되는 pick 후보가 있으면 하나씩
+  확인 창으로 지금 pick할지 물어본다.
 - **4 (레포지토리 관리)**: 추적 목록을 표로 보여주고(경로·git 상태·이슈 개수),
   상단에 `Sync Push`/`Sync Pull` 버튼이 있다. 레포 하나를 선택하면 상세
   화면에서 `Audit 새로고침`/`Relink`/`Pick 파일 추가`/`Untrack`을 바로 실행할
   수 있다.
 - **5 (파일 Pick)**: 레포를 고른 뒤 상대경로를 입력(자동완성 지원)하거나
-  `자동 탐지(--auto)` 버튼으로 `sensitive_patterns` 후보를 한 번에 격리한다.
+  `자동 탐지(--auto)` 버튼으로 후보를 한 번에 격리한다. 레포의 `.gitignore`에
+  repo-sentinel 리전이 있으면 그 패턴을, 없으면 전역 `sensitive_patterns`를
+  사용한다.
 - **6 (환경설정)**: `vault_root`/`sync_target`/`sensitive_patterns`를 폼으로
   편집하고 저장한다.
 

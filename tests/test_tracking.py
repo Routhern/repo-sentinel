@@ -1,7 +1,14 @@
 from pathlib import Path
 
 from repo_sentinel.core import tracking
+from repo_sentinel.core import config as config_core
+from repo_sentinel.core.gitignore import REGION_BEGIN, REGION_END
 from repo_sentinel.core.vault import Manifest, ProtectedFile, repo_vault_dir, save_manifest
+
+
+def _isolate_config(monkeypatch, tmp_path: Path) -> None:
+    """track_repo가 .gitignore 리전을 만들 때 참조하는 전역 설정을 테스트 디렉터리로 격리한다."""
+    monkeypatch.setattr(config_core, "CONFIG_FILE", tmp_path / "config.toml")
 
 
 def test_add_and_load_tracked(tmp_path: Path, monkeypatch) -> None:
@@ -53,6 +60,7 @@ def test_track_repo_rejects_non_git_directory(tmp_path: Path) -> None:
 
 def test_track_repo_computes_default_key_and_warns_without_remote(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(tracking, "TRACKED_FILE", tmp_path / "tracked.json")
+    _isolate_config(monkeypatch, tmp_path)
     repo = tmp_path / "repo"
     (repo / ".git").mkdir(parents=True)
 
@@ -66,6 +74,7 @@ def test_track_repo_computes_default_key_and_warns_without_remote(tmp_path: Path
 
 def test_track_repo_with_custom_key(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(tracking, "TRACKED_FILE", tmp_path / "tracked.json")
+    _isolate_config(monkeypatch, tmp_path)
     repo = tmp_path / "repo"
     (repo / ".git").mkdir(parents=True)
 
@@ -78,6 +87,7 @@ def test_track_repo_with_custom_key(tmp_path: Path, monkeypatch) -> None:
 
 def test_track_repo_rejects_key_collision_with_different_path(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(tracking, "TRACKED_FILE", tmp_path / "tracked.json")
+    _isolate_config(monkeypatch, tmp_path)
     repo_a = tmp_path / "repo-a"
     repo_b = tmp_path / "repo-b"
     (repo_a / ".git").mkdir(parents=True)
@@ -88,6 +98,55 @@ def test_track_repo_rejects_key_collision_with_different_path(tmp_path: Path, mo
 
     assert result.entry is None
     assert result.error is not None
+
+
+def test_track_repo_creates_gitignore_region_with_default_patterns(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(tracking, "TRACKED_FILE", tmp_path / "tracked.json")
+    _isolate_config(monkeypatch, tmp_path)
+    repo = tmp_path / "repo"
+    (repo / ".git").mkdir(parents=True)
+
+    result = tracking.track_repo(repo)
+
+    assert result.gitignore_region_created is True
+    gitignore_text = (repo / ".gitignore").read_text(encoding="utf-8")
+    assert REGION_BEGIN in gitignore_text
+    assert REGION_END in gitignore_text
+    assert ".env" in gitignore_text
+
+
+def test_track_repo_does_not_recreate_existing_region(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(tracking, "TRACKED_FILE", tmp_path / "tracked.json")
+    _isolate_config(monkeypatch, tmp_path)
+    repo = tmp_path / "repo"
+    (repo / ".git").mkdir(parents=True)
+    (repo / ".gitignore").write_text(
+        f"{REGION_BEGIN}\ncustom.secret\n{REGION_END}\n", encoding="utf-8"
+    )
+
+    result = tracking.track_repo(repo)
+
+    assert result.gitignore_region_created is False
+    # 사용자가 수동으로 넣어둔 패턴이 그대로 유지되어야 한다 (전역 설정으로 덮어쓰지 않음).
+    assert (repo / ".gitignore").read_text(encoding="utf-8") == (
+        f"{REGION_BEGIN}\ncustom.secret\n{REGION_END}\n"
+    )
+
+
+def test_track_repo_reports_pick_candidates_from_region(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(tracking, "TRACKED_FILE", tmp_path / "tracked.json")
+    _isolate_config(monkeypatch, tmp_path)
+    repo = tmp_path / "repo"
+    (repo / ".git").mkdir(parents=True)
+    (repo / ".gitignore").write_text(
+        f"{REGION_BEGIN}\nsecret.env\n{REGION_END}\n", encoding="utf-8"
+    )
+    (repo / "secret.env").write_text("TOKEN=abc", encoding="utf-8")
+    (repo / "unrelated.txt").write_text("hello", encoding="utf-8")
+
+    result = tracking.track_repo(repo)
+
+    assert result.pick_candidates == ["secret.env"]
 
 
 def test_untrack_repo_unknown_repo_returns_error(tmp_path: Path, monkeypatch) -> None:

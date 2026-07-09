@@ -36,12 +36,11 @@ from textual.widgets import (
 from textual.widgets.option_list import Option
 
 from repo_sentinel.core import audit as audit_core
+from repo_sentinel.core import gitignore as gitignore_core
 from repo_sentinel.core import protect as protect_core
 from repo_sentinel.core import sync as sync_core
 from repo_sentinel.core import tracking
 from repo_sentinel.core.config import Config, load_config, save_config
-from repo_sentinel.core.gitignore import add_entry as gitignore_add_entry
-from repo_sentinel.core.gitignore import is_ignored
 from repo_sentinel.tui.paths import relative_path_candidates
 
 
@@ -197,6 +196,63 @@ class TrackScreen(NavScreen):
         log.write(Text(f"추적 완료: {result.entry.repo_key} -> {result.entry.path}", style="bold green"))
         path_input.value = ""
         key_input.value = ""
+
+        if result.gitignore_region_created:
+            log.write(
+                Text(
+                    ".gitignore에 repo-sentinel 리전을 추가했습니다. "
+                    "pick 후보 패턴을 바꾸려면 그 구간을 직접 편집하세요 (자동으로 갱신되지 않습니다).",
+                    style="white",
+                )
+            )
+
+        if result.pick_candidates:
+            config = load_config()
+            vault_root = Path(config.vault_root)
+            self._offer_pick_candidates(
+                result.entry.repo_key, Path(result.entry.path), vault_root, list(result.pick_candidates)
+            )
+
+    def _offer_pick_candidates(
+        self, repo_key: str, repo_path: Path, vault_root: Path, candidates: list[str]
+    ) -> None:
+        if not candidates:
+            return
+        relative_path, *rest = candidates
+        self.app.push_screen(
+            ConfirmModal(f"pick 후보: {relative_path}\n지금 pick할까요?"),
+            lambda confirmed: self._handle_pick_choice(
+                confirmed, repo_key, repo_path, relative_path, vault_root, rest
+            ),
+        )
+
+    def _handle_pick_choice(
+        self,
+        confirmed: bool,
+        repo_key: str,
+        repo_path: Path,
+        relative_path: str,
+        vault_root: Path,
+        rest: list[str],
+    ) -> None:
+        if confirmed:
+            log = self.query_one("#track-log", RichLog)
+            try:
+                vault_file = protect_core.protect_file(repo_path, relative_path, vault_root, repo_key)
+            except (
+                FileNotFoundError,
+                protect_core.AlreadyProtectedError,
+                protect_core.SymlinkPermissionError,
+            ) as e:
+                log.write(Text(f"{relative_path}: {e}", style="bold red"))
+            else:
+                log.write(Text(f"격리 완료: {relative_path} -> {vault_file}", style="bold green"))
+                added = protect_core.reflect_gitignore(
+                    repo_path, repo_key, relative_path, vault_root, should_add=True
+                )
+                if added:
+                    log.write(Text(f".gitignore에 {relative_path}를 자동으로 추가했습니다.", style="white"))
+        self._offer_pick_candidates(repo_key, repo_path, vault_root, rest)
 
 
 class UntrackScreen(NavScreen):
@@ -553,7 +609,8 @@ class PickScreen(NavScreen):
         if entry is None:
             return
         config = load_config()
-        candidates = protect_core.find_candidates(Path(entry.path), config.sensitive_patterns)
+        patterns = gitignore_core.resolve_patterns(Path(entry.path), config.sensitive_patterns)
+        candidates = protect_core.find_candidates(Path(entry.path), patterns)
         if not candidates:
             self.query_one("#pick-log", RichLog).write(Text("자동 탐지된 후보가 없습니다.", style="white"))
             return
@@ -575,11 +632,8 @@ class PickScreen(NavScreen):
             return
 
         log.write(Text(f"격리 완료: {relative_path} -> {vault_file}", style="bold green"))
-        if is_ignored(repo_path, relative_path):
-            protect_core.mark_gitignore_verified(vault_root, self.repo_key, relative_path)
-        else:
-            gitignore_add_entry(repo_path, relative_path)
-            protect_core.mark_gitignore_verified(vault_root, self.repo_key, relative_path)
+        added = protect_core.reflect_gitignore(repo_path, self.repo_key, relative_path, vault_root, should_add=True)
+        if added:
             log.write(Text(f".gitignore에 {relative_path}를 자동으로 추가했습니다.", style="white"))
 
 

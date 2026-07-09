@@ -87,6 +87,56 @@ def test_restore_file_round_trip(tmp_path: Path, symlinks_supported: bool) -> No
     ) is None
 
 
+def test_reflect_gitignore_marks_verified_when_already_ignored(tmp_path: Path, monkeypatch) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    vault_root = tmp_path / "vault"
+    manifest = Manifest()
+    manifest.repo("repo-a").files.append(ProtectedFile(relative_path="secret.env", protected_at="t"))
+    save_manifest(vault_root, manifest)
+    monkeypatch.setattr(protect, "is_ignored", lambda *a, **k: True)
+
+    added = protect.reflect_gitignore(repo, "repo-a", "secret.env", vault_root, should_add=False)
+
+    assert added is False
+    entry = load_manifest(vault_root).repos["repo-a"].find("secret.env")
+    assert entry.gitignore_verified is True
+
+
+def test_reflect_gitignore_adds_entry_when_should_add(tmp_path: Path, monkeypatch) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    vault_root = tmp_path / "vault"
+    manifest = Manifest()
+    manifest.repo("repo-a").files.append(ProtectedFile(relative_path="secret.env", protected_at="t"))
+    save_manifest(vault_root, manifest)
+    monkeypatch.setattr(protect, "is_ignored", lambda *a, **k: False)
+
+    added = protect.reflect_gitignore(repo, "repo-a", "secret.env", vault_root, should_add=True)
+
+    assert added is True
+    assert "secret.env" in (repo / ".gitignore").read_text(encoding="utf-8")
+    entry = load_manifest(vault_root).repos["repo-a"].find("secret.env")
+    assert entry.gitignore_verified is True
+
+
+def test_reflect_gitignore_skips_when_should_add_false_and_not_ignored(tmp_path: Path, monkeypatch) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    vault_root = tmp_path / "vault"
+    manifest = Manifest()
+    manifest.repo("repo-a").files.append(ProtectedFile(relative_path="secret.env", protected_at="t"))
+    save_manifest(vault_root, manifest)
+    monkeypatch.setattr(protect, "is_ignored", lambda *a, **k: False)
+
+    added = protect.reflect_gitignore(repo, "repo-a", "secret.env", vault_root, should_add=False)
+
+    assert added is False
+    assert not (repo / ".gitignore").exists()
+    entry = load_manifest(vault_root).repos["repo-a"].find("secret.env")
+    assert entry.gitignore_verified is False
+
+
 def test_relink_recreates_broken_link(tmp_path: Path, symlinks_supported: bool) -> None:
     if not symlinks_supported:
         pytest.skip("이 환경에서는 심볼릭 링크를 만들 권한이 없습니다 (Windows 개발자 모드 필요)")

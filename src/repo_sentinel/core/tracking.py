@@ -11,12 +11,12 @@ from __future__ import annotations
 
 import json
 import shutil
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
-from repo_sentinel.core import protect
-from repo_sentinel.core.config import TRACKED_FILE, ensure_config_dir
+from repo_sentinel.core import gitignore, protect
+from repo_sentinel.core.config import TRACKED_FILE, ensure_config_dir, load_config
 from repo_sentinel.core.repo_key import compute_repo_key
 from repo_sentinel.core.vault import load_manifest, repo_vault_dir
 
@@ -94,13 +94,18 @@ class TrackResult:
     entry: TrackedRepo | None
     warning: str | None = None
     error: str | None = None
+    gitignore_region_created: bool = False
+    pick_candidates: list[str] = field(default_factory=list)
 
 
 def track_repo(repo_path: Path, custom_key: str | None = None) -> TrackResult:
     """CLI의 `track`과 TUI의 Track 화면이 공유하는 등록 로직.
 
     repo_key 계산, 이식성 경고, 별칭 충돌 검사까지 한 번에 처리해 두 진입점이
-    같은 정책을 쓰도록 한다.
+    같은 정책을 쓰도록 한다. 등록 후에는 레포의 .gitignore에 repo-sentinel
+    리전이 없으면 전역 sensitive_patterns로 새로 만들고(있으면 그대로 두고),
+    그 리전의 패턴에 매칭되는 pick 후보를 함께 계산해 돌려준다 — 실제로 pick할지
+    사용자에게 물어보는 것은 호출자(CLI/TUI)의 몫이다.
     """
     if not (repo_path / ".git").exists():
         return TrackResult(None, error=f"{repo_path}는 git 저장소가 아닙니다.")
@@ -134,7 +139,18 @@ def track_repo(repo_path: Path, custom_key: str | None = None) -> TrackResult:
         remote_url=result.remote_url,
         is_portable=result.is_portable,
     )
-    return TrackResult(entry, warning=warning)
+
+    config = load_config()
+    region_created = gitignore.ensure_region(repo_path, config.sensitive_patterns)
+    patterns = gitignore.resolve_patterns(repo_path, config.sensitive_patterns)
+    pick_candidates = protect.find_candidates(repo_path, patterns)
+
+    return TrackResult(
+        entry,
+        warning=warning,
+        gitignore_region_created=region_created,
+        pick_candidates=pick_candidates,
+    )
 
 
 @dataclass

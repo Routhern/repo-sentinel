@@ -9,10 +9,10 @@ from rich.console import Console
 from rich.table import Table
 
 from repo_sentinel.core import audit as audit_core
+from repo_sentinel.core import gitignore as gitignore_core
 from repo_sentinel.core import protect as protect_core
 from repo_sentinel.core import scanner, sync as sync_core, tracking
 from repo_sentinel.core.config import load_config, save_config
-from repo_sentinel.core.gitignore import add_entry as gitignore_add_entry
 from repo_sentinel.core.gitignore import is_ignored
 
 app = typer.Typer(help="PC 전역의 git 저장소를 관리하는 repo-sentinel CLI")
@@ -60,6 +60,20 @@ def track(
     entry = result.entry
     assert entry is not None
     console.print(f"[green]추적 완료[/green]: {entry.repo_key} -> {entry.path}")
+
+    if result.gitignore_region_created:
+        console.print(
+            "[dim].gitignore에 repo-sentinel 리전을 추가했습니다. "
+            "pick 후보 패턴을 바꾸려면 그 구간을 직접 편집하세요 (자동으로 갱신되지 않습니다).[/dim]"
+        )
+
+    if result.pick_candidates:
+        config = load_config()
+        vault_root = Path(config.vault_root)
+        console.print(f"[cyan]pick 후보 파일 {len(result.pick_candidates)}개를 찾았습니다.[/cyan]")
+        for relative_path in result.pick_candidates:
+            if typer.confirm(f"{relative_path}를 지금 pick할까요?", default=True):
+                _pick_one(repo_path, entry.repo_key, relative_path, vault_root)
 
 
 app.command(name="t")(track)
@@ -140,11 +154,37 @@ def status() -> None:
     console.print(table)
 
 
+def _confirm_gitignore_add(repo_path: Path, relative_path: str) -> bool:
+    """이미 무시되어 있으면 물어볼 필요가 없으므로 바로 True, 아니면 사용자에게 확인한다."""
+    if is_ignored(repo_path, relative_path):
+        return True
+    return typer.confirm(
+        f".gitignore에 {relative_path}가 없습니다. 지금 추가할까요? "
+        "(추가하지 않으면 심볼릭 링크가 그대로 커밋될 수 있습니다)",
+        default=True,
+    )
+
+
+def _pick_one(repo_path: Path, repo_key: str, relative_path: str, vault_root: Path) -> None:
+    """protect_file 실행 + .gitignore 반영까지 한 번에 처리한다. `pick`과 `track`이 공유한다."""
+    try:
+        vault_file = protect_core.protect_file(repo_path, relative_path, vault_root, repo_key)
+    except (FileNotFoundError, protect_core.AlreadyProtectedError, protect_core.SymlinkPermissionError) as e:
+        console.print(f"[red]{relative_path}: {e}[/red]")
+        return
+
+    console.print(f"[green]격리 완료[/green]: {relative_path} -> {vault_file}")
+    should_add = _confirm_gitignore_add(repo_path, relative_path)
+    protect_core.reflect_gitignore(repo_path, repo_key, relative_path, vault_root, should_add=should_add)
+
+
 @app.command(name="pick")
 def pick(
     repo_key: str = typer.Argument(..., help="대상 repo_key"),
     paths: Optional[list[str]] = typer.Argument(None, help="보호할 레포 내 상대경로 (생략 시 --auto 필요)"),
-    auto: bool = typer.Option(False, "--auto", help="설정된 sensitive_patterns로 후보를 자동 탐색"),
+    auto: bool = typer.Option(
+        False, "--auto", help="레포의 .gitignore 리전(없으면 전역 sensitive_patterns)으로 후보를 자동 탐색"
+    ),
 ) -> None:
     """레포의 지정 파일을 vault로 옮기고 심볼릭 링크로 대체한다."""
     tracked = tracking.load_tracked()
@@ -159,7 +199,8 @@ def pick(
 
     target_paths = list(paths or [])
     if auto:
-        target_paths.extend(protect_core.find_candidates(repo_path, config.sensitive_patterns))
+        patterns = gitignore_core.resolve_patterns(repo_path, config.sensitive_patterns)
+        target_paths.extend(protect_core.find_candidates(repo_path, patterns))
     target_paths = sorted(set(target_paths))
 
     if not target_paths:
@@ -167,25 +208,7 @@ def pick(
         raise typer.Exit()
 
     for relative_path in target_paths:
-        try:
-            vault_file = protect_core.protect_file(repo_path, relative_path, vault_root, repo_key)
-        except (FileNotFoundError, protect_core.AlreadyProtectedError, protect_core.SymlinkPermissionError) as e:
-            console.print(f"[red]{relative_path}: {e}[/red]")
-            continue
-
-        console.print(f"[green]격리 완료[/green]: {relative_path} -> {vault_file}")
-
-        if is_ignored(repo_path, relative_path):
-            protect_core.mark_gitignore_verified(vault_root, repo_key, relative_path)
-        else:
-            add_it = typer.confirm(
-                f".gitignore에 {relative_path}가 없습니다. 지금 추가할까요? "
-                "(추가하지 않으면 심볼릭 링크가 그대로 커밋될 수 있습니다)",
-                default=True,
-            )
-            if add_it:
-                gitignore_add_entry(repo_path, relative_path)
-                protect_core.mark_gitignore_verified(vault_root, repo_key, relative_path)
+        _pick_one(repo_path, repo_key, relative_path, vault_root)
 
 
 app.command(name="p")(pick)

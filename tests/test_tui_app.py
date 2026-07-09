@@ -3,6 +3,7 @@ from pathlib import Path
 import pytest
 from textual.widgets import DataTable, Input, OptionList, RichLog
 
+from repo_sentinel.core import protect as protect_core
 from repo_sentinel.core import tracking
 from repo_sentinel.core.config import Config
 from repo_sentinel.tui import screens as screens_module
@@ -23,7 +24,11 @@ from repo_sentinel.tui.screens import (
 def isolated_env(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(tracking, "TRACKED_FILE", tmp_path / "tracked.json")
     vault_root = tmp_path / "vault"
-    monkeypatch.setattr(screens_module, "load_config", lambda: Config(vault_root=str(vault_root)))
+    config = Config(vault_root=str(vault_root))
+    monkeypatch.setattr(screens_module, "load_config", lambda: config)
+    # track_repo()가 내부적으로 부르는 load_config도 실제 ~/.repo-sentinel/config.toml이
+    # 아니라 같은 격리된 설정을 보도록 맞춘다 (gitignore 리전 시드 패턴에 영향).
+    monkeypatch.setattr(tracking, "load_config", lambda: config)
     return tmp_path
 
 
@@ -117,6 +122,36 @@ async def test_track_screen_rejects_non_git_directory(isolated_env: Path) -> Non
 
         assert tracking.load_tracked() == {}
         assert "git 저장소가 아닙니다" in _log_text(app.screen.query_one("#track-log", RichLog))
+
+
+async def test_track_screen_offers_pick_candidates_from_gitignore_region(
+    isolated_env: Path, symlinks_supported: bool, monkeypatch
+) -> None:
+    if not symlinks_supported:
+        pytest.skip("이 환경에서는 심볼릭 링크를 만들 권한이 없습니다 (Windows 개발자 모드 필요)")
+    monkeypatch.setattr(protect_core, "is_ignored", lambda *a, **k: False)
+
+    repo = isolated_env / "repo-with-secret"
+    (repo / ".git").mkdir(parents=True)
+    (repo / ".env").write_text("TOKEN=abc", encoding="utf-8")
+
+    app = RepoSentinelApp()
+    async with app.run_test() as pilot:
+        await pilot.press("1")
+        await pilot.pause()
+        app.screen.query_one("#track-path", Input).value = str(repo)
+        await pilot.click("#track-submit")
+        await pilot.pause()
+
+        assert type(app.screen).__name__ == "ConfirmModal"
+        # 아직 확인 전이므로 실제 파일은 그대로 남아있어야 한다.
+        assert not (repo / ".env").is_symlink()
+
+        await pilot.click("#confirm-yes")
+        await pilot.pause()
+
+        assert (repo / ".env").is_symlink()
+        assert ".env" in (repo / ".gitignore").read_text(encoding="utf-8")
 
 
 async def test_untrack_screen_restore_mode_removes_entry(isolated_env: Path) -> None:

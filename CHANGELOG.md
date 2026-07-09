@@ -43,6 +43,15 @@
 
 ### Added
 
+- `track`이 레포의 `.gitignore`에 repo-sentinel 리전(`# >>> repo-sentinel: pick
+  후보 패턴 >>>` ~ `# <<< ... <<<`)을 확인/생성하고, 그 리전의 패턴에
+  매칭되는 pick 후보가 있으면 하나씩 지금 pick할지 물어보는 기능을
+  추가했습니다. 리전이 이미 있으면 절대 덮어쓰지 않습니다 — 패턴 갱신은
+  사용자가 `.gitignore`의 그 구간을 직접 편집하는 수동 과정입니다. 리전이
+  있는 레포에서는 `pick --auto`도 전역 `sensitive_patterns` 대신 이 리전의
+  패턴을 우선 사용합니다(`core/gitignore.py`의 `ensure_region`/
+  `read_region_patterns`/`resolve_patterns`, `core/tracking.py`의
+  `track_repo`가 계산해 `TrackResult.pick_candidates`로 돌려줌).
 - `CHANGELOG.md`, `CONTRIBUTING.md`, `LICENSE`(MIT), `docs/` 문서 카테고리를
   새로 도입했습니다.
 - `bin/repo-sentinel-admin.vbs`를 추가했습니다. Windows에서 개발자 모드를 켤 수

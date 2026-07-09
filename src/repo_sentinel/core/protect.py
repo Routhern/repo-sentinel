@@ -13,6 +13,7 @@ from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
 
+from repo_sentinel.core.gitignore import add_entry, is_ignored
 from repo_sentinel.core.vault import ProtectedFile, load_manifest, repo_vault_dir, save_manifest
 
 
@@ -108,6 +109,26 @@ def mark_gitignore_verified(vault_root: Path, repo_key: str, relative_path: str)
     entry.files.remove(existing)
     entry.files.append(replace(existing, gitignore_verified=True))
     save_manifest(vault_root, manifest)
+
+
+def reflect_gitignore(
+    repo_path: Path, repo_key: str, relative_path: str, vault_root: Path, *, should_add: bool
+) -> bool:
+    """protect 이후 .gitignore 반영 상태를 정리한다. CLI의 `pick`/`track`과 TUI의
+    PickScreen/TrackScreen이 공유하는 로직이다.
+
+    이미 .gitignore로 무시되어 있으면 매니페스트에 확인 표시만 하고, 그렇지
+    않으면 should_add일 때만 새로 추가한다(추가 여부를 사용자에게 물을지는
+    호출자의 표현 계층 책임). 새로 추가했으면 True를 반환한다.
+    """
+    if is_ignored(repo_path, relative_path):
+        mark_gitignore_verified(vault_root, repo_key, relative_path)
+        return False
+    if should_add:
+        add_entry(repo_path, relative_path)
+        mark_gitignore_verified(vault_root, repo_key, relative_path)
+        return True
+    return False
 
 
 def restore_file(
