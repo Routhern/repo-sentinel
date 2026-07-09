@@ -15,6 +15,11 @@
   `core/protect.py`의 `restore_file`/`relink_repo`는 `relative_path`가
   `repo_path`/`vault_root`를 벗어나면 각각 `UnsafeRelativePathError`를 던지거나
   (relink의 경우) 해당 항목만 건너뛰고 `DriftError`로 알립니다.
+- `sync --direction pull`이 `sync_target`(NAS 등) 안의 심볼릭 링크를 따라가
+  그 대상 파일/디렉터리 내용을 vault로 그대로 복사해 오던 문제를
+  수정했습니다. `core/sync.py`의 `_mirror`가 이제 심볼릭 링크(파일·디렉터리
+  모두)를 건너뛰어, 공유 NAS 폴더에 심긴 심볼릭 링크로 로컬의 임의 파일이
+  vault에 유입되는 경로를 막습니다.
 
 ### Changed
 
